@@ -9,6 +9,7 @@ from typing import Any
 import chromadb
 
 from app.config import Settings
+from app.services.grounding import filter_grounded_hits
 from app.services.openai_service import OpenAIService
 from app.services.parsers import DocumentParser
 from app.services.registry import FileRegistry
@@ -123,8 +124,12 @@ class SearchIndex:
                     )
                 )
 
-        results.sort(key=lambda item: item.distance)
-        return results[: self.settings.max_context_chunks]
+        return filter_grounded_hits(
+            hits=results,
+            max_search_distance=self.settings.max_search_distance,
+            max_distance_spread=self.settings.max_distance_spread,
+            max_context_chunks=self.settings.max_context_chunks,
+        )
 
     def _replace_document(self, path: Path, sha256: str, chunks: list[ParsedChunk]) -> None:
         self._delete_existing_entries(path)

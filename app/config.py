@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     chunk_overlap_chars: int = 160
     top_k_per_collection: int = 5
     max_context_chunks: int = 8
+    max_search_distance: float = 0.65
+    max_distance_spread: float = 0.12
     index_schema_version: str = "v1"
     max_upload_size_mb: int = 25
 

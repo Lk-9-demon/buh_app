@@ -6,6 +6,7 @@ from typing import Iterable
 from openai import OpenAI
 
 from app.config import Settings
+from app.services.grounding import INSUFFICIENT_CONTEXT_MESSAGE, validate_grounded_answer
 from app.types import SearchHit
 
 
@@ -34,7 +35,7 @@ class OpenAIService:
 
     def answer_question(self, question: str, hits: list[SearchHit]) -> str:
         if not hits:
-            return "Не знайшов у базі достатньо релевантних фрагментів, щоб відповісти впевнено."
+            return INSUFFICIENT_CONTEXT_MESSAGE
 
         context_blocks = []
         for index, hit in enumerate(hits, start=1):
@@ -51,8 +52,11 @@ class OpenAIService:
                     "content": (
                         "Ти внутрішній AI-асистент для бухгалтера компанії. "
                         "Відповідай тільки на основі наданого контексту. "
-                        "Якщо контексту недостатньо, прямо скажи про це. "
-                        "Наприкінці завжди додай короткий рядок 'Джерела:' з посиланням на [SOURCE n]."
+                        "Не використовуй зовнішні знання, не домислюй, не узагальнюй і не вигадуй відсутні значення. "
+                        "Якщо хоч одна частина відповіді не підтверджується джерелами, напиши тільки: "
+                        f"'{INSUFFICIENT_CONTEXT_MESSAGE}'. "
+                        "Кожне речення з фактом повинно містити посилання на джерело у форматі [SOURCE n]. "
+                        "Останній рядок повинен починатися з 'Джерела:' і перераховувати тільки використані [SOURCE n]."
                     ),
                 },
                 {
@@ -65,7 +69,10 @@ class OpenAIService:
             ],
         )
         message = response.choices[0].message.content or ""
-        return message.strip()
+        normalized = message.strip()
+        if not validate_grounded_answer(normalized, hits):
+            return INSUFFICIENT_CONTEXT_MESSAGE
+        return normalized
 
     def _format_source_label(self, metadata: dict[str, object]) -> str:
         details = [str(metadata.get("source_name", "unknown"))]
