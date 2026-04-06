@@ -5,14 +5,26 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
-from app.dependencies import get_chat_service, get_file_registry, get_ollama_service, get_search_index
+from app.dependencies import (
+    get_chat_service,
+    get_file_registry,
+    get_indexing_manager,
+    get_ollama_service,
+    get_search_index,
+)
+from app.services.document_preview import (
+    build_preview_context,
+    guess_media_type,
+    render_answer_html,
+    resolve_document_path,
+)
 from app.types import ChatAnswer
 
 
@@ -39,6 +51,46 @@ app.mount(
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request, message: str | None = None):
     return _render_home(request=request, message=message)
+
+
+@app.get("/documents/file")
+async def serve_document_file(path: str):
+    try:
+        resolved_path = resolve_document_path(settings, path)
+    except (FileNotFoundError, PermissionError, ValueError):
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return FileResponse(path=resolved_path, media_type=guess_media_type(resolved_path), filename=resolved_path.name)
+
+
+@app.get("/documents/preview", response_class=HTMLResponse)
+async def preview_document(
+    request: Request,
+    path: str,
+    page: int | None = None,
+    sheet_name: str | None = None,
+    row_number: int | None = None,
+):
+    try:
+        resolved_path = resolve_document_path(settings, path)
+    except (FileNotFoundError, PermissionError, ValueError):
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    preview = await run_in_threadpool(
+        build_preview_context,
+        resolved_path,
+        page,
+        sheet_name,
+        row_number,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="preview.html",
+        context={
+            "app_name": settings.app_name,
+            "preview": preview,
+        },
+    )
 
 
 @app.post("/documents/upload")
@@ -84,14 +136,11 @@ async def reindex_documents():
     if not runtime_status["ready"]:
         return _redirect_with_message(str(runtime_status["message"]))
 
-    report = await run_in_threadpool(get_search_index().index_documents)
-    message = (
-        f"Індексація завершена. Нових/оновлених: {report.indexed}, "
-        f"пропущено: {report.skipped}, видалено з індексу: {report.removed}, помилок: {report.failed}."
-    )
-    if report.errors:
-        message += " Деталі нижче у таблиці файлів."
-    return _redirect_with_message(message)
+    started = get_indexing_manager().start()
+    if not started:
+        return _redirect_with_message("Індексація вже триває. Онови сторінку, щоб побачити прогрес.")
+
+    return _redirect_with_message("Індексацію запущено у фоні. Сторінка більше не повинна зависати.")
 
 
 @app.post("/chat", response_class=HTMLResponse)
@@ -134,9 +183,11 @@ def _render_home(
     chat_answer: ChatAnswer | None = None,
 ):
     registry = get_file_registry()
+    indexing_status = get_indexing_manager().get_status()
     runtime_status = get_ollama_service().get_status()
     records = registry.list_records(limit=200)
     stats = registry.get_stats()
+    chat_answer_html = render_answer_html(chat_answer.answer, chat_answer.sources) if chat_answer else None
 
     return templates.TemplateResponse(
         request=request,
@@ -147,9 +198,11 @@ def _render_home(
             "settings": settings,
             "runtime_ready": bool(runtime_status["ready"]),
             "runtime_message": runtime_status["message"],
+            "indexing_status": indexing_status,
             "records": records,
             "stats": stats,
             "chat_answer": chat_answer,
+            "chat_answer_html": chat_answer_html,
         },
     )
 

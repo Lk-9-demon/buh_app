@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ preview.file_name }} - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<main class="page preview-page">
+    <section class="panel">
+        <div class="preview-head">
+            <div>
+                <p class="eyebrow">Джерело</p>
+                <h1 class="preview-title">{{ preview.file_name }}</h1>
+                <p class="preview-meta mono">{{ preview.file_path }}</p>
+                {% if preview.page %}
+                <p class="preview-note">Сторінка: {{ preview.page }}</p>
+                {% endif %}
+                {% if preview.sheet_name %}
+                <p class="preview-note">Лист: {{ preview.sheet_name }}</p>
+                {% endif %}
+                {% if preview.row_number %}
+                <p class="preview-note">Рядок: {{ preview.row_number }}</p>
+                {% endif %}
+            </div>
+            <div class="preview-actions">
+                <a class="source-open-link" href="{{ preview.file_url }}" target="_blank" rel="noopener">Відкрити у браузері</a>
+                {% if preview.native_open_url != preview.file_url %}
+                <a class="source-open-link secondary-link" href="{{ preview.native_open_url }}">Відкрити в програмі</a>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if preview.kind == 'pdf' %}
+        <div class="preview-frame-wrap">
+            <iframe class="preview-frame" src="{{ preview.embed_url }}" title="{{ preview.file_name }}"></iframe>
+        </div>
+        {% elif preview.kind == 'table' %}
+        <p class="preview-note">
+            Для Excel і CSV відкриваю best effort preview з виділенням потрібного рядка. Кнопка "Відкрити в програмі" відкриває сам файл.
+        </p>
+        {% if preview.table_rows %}
+        <div class="table-wrap preview-table-wrap">
+            <table class="preview-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        {% for header in preview.table_headers %}
+                        <th>{{ header }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in preview.table_rows %}
+                    <tr id="row-{{ row.row_number }}" class="{% if row.is_target %}target-row{% endif %}">
+                        <td class="row-number-cell">{{ row.row_number }}</td>
+                        {% for cell in row.cells %}
+                        <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="preview-note">Не вдалося побудувати табличний preview для цього файла. Спробуй відкрити сам файл.</p>
+        {% endif %}
+        {% else %}
+        <p class="preview-note">
+            Для цього типу файла доступне відкриття самого документа. Якщо джерело було в DOCX або TXT, точне місце поки не підсвічується.
+        </p>
+        {% endif %}
+    </section>
+</main>
+
+{% if preview.kind == 'table' and preview.row_number %}
+<script>
+    const targetRow = document.getElementById("row-{{ preview.row_number }}");
+    if (targetRow) {
+        targetRow.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+</script>
+{% endif %}
+</body>
+</html>

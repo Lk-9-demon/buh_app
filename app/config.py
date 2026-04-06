@@ -17,21 +17,24 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
     embedding_model: str = Field(default="qwen3-embedding:0.6b", alias="OLLAMA_EMBEDDING_MODEL")
     answer_model: str = Field(default="qwen3:8b", alias="OLLAMA_CHAT_MODEL")
-    answer_temperature: float = Field(default=0.1, alias="OLLAMA_TEMPERATURE")
+    answer_temperature: float = Field(default=0.0, alias="OLLAMA_TEMPERATURE")
+    answer_max_tokens: int = Field(default=120, alias="OLLAMA_MAX_TOKENS")
+    answer_keep_alive: str = Field(default="30m", alias="OLLAMA_KEEP_ALIVE")
 
     documents_dir: Path = BASE_DIR / "data" / "documents"
     storage_dir: Path = BASE_DIR / "storage"
-    chroma_dir: Path = BASE_DIR / "storage" / "chroma"
-    state_db_path: Path = BASE_DIR / "storage" / "state.db"
+    chroma_dir: Path = BASE_DIR / "storage" / "chroma_v2"
+    state_db_path: Path = BASE_DIR / "storage" / "state_v2.db"
 
     allowed_extensions: tuple[str, ...] = (".pdf", ".xls", ".xlsx", ".docx", ".csv", ".txt")
     max_chunk_chars: int = 1400
     chunk_overlap_chars: int = 160
-    top_k_per_collection: int = 5
-    max_context_chunks: int = 8
+    max_context_chars_per_hit: int = 500
+    top_k_per_collection: int = 3
+    max_context_chunks: int = 3
     max_search_distance: float = 0.65
     max_distance_spread: float = 0.12
-    index_schema_version: str = "v1"
+    index_schema_version: str = "v2"
     max_upload_size_mb: int = 25
 
     model_config = SettingsConfigDict(

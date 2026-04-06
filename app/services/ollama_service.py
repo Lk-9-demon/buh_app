@@ -42,7 +42,8 @@ class OllamaService:
         context_blocks = []
         for index, hit in enumerate(hits, start=1):
             source_label = self._format_source_label(hit.metadata)
-            context_blocks.append(f"[SOURCE {index}] {source_label}\n{hit.text}")
+            context_text = self._clip_context_text(hit.text)
+            context_blocks.append(f"[SOURCE {index}] {source_label}\n{context_text}")
 
         response = self._post_json(
             "/api/chat",
@@ -50,8 +51,10 @@ class OllamaService:
                 "model": self.settings.answer_model,
                 "stream": False,
                 "think": False,
+                "keep_alive": self.settings.answer_keep_alive,
                 "options": {
                     "temperature": self.settings.answer_temperature,
+                    "num_predict": self.settings.answer_max_tokens,
                 },
                 "messages": [
                     {
@@ -119,6 +122,17 @@ class OllamaService:
             f"Питання:\n{question}\n\n"
             f"Контекст:\n{context}"
         )
+
+    def _clip_context_text(self, text: str) -> str:
+        limit = self.settings.max_context_chars_per_hit
+        normalized = text.strip()
+        if len(normalized) <= limit:
+            return normalized
+
+        clipped = normalized[:limit].rsplit(" ", 1)[0].strip()
+        if not clipped:
+            clipped = normalized[:limit].strip()
+        return f"{clipped} ..."
 
     def _normalize_answer(self, message: str) -> str:
         lines = []

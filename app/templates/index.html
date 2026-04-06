@@ -35,6 +35,20 @@
     </section>
     {% endif %}
 
+    {% if indexing_status.running %}
+    <section class="notice">
+        Індексація триває: {{ indexing_status.processed_files }} / {{ indexing_status.total_files }}.
+        {% if indexing_status.current_file %}
+        Зараз обробляється: <span class="mono">{{ indexing_status.current_file }}</span>.
+        {% endif %}
+        Уже готово: {{ indexing_status.report.indexed }}, пропущено: {{ indexing_status.report.skipped }}, помилок: {{ indexing_status.report.failed }}.
+    </section>
+    {% elif indexing_status.message %}
+    <section class="notice">
+        {{ indexing_status.message }}
+    </section>
+    {% endif %}
+
     {% if not runtime_ready %}
     <section class="notice warning">
         {{ runtime_message or "Локальна Ollama ще не готова. Перевір, що сервер запущений і потрібні моделі завантажені." }}
@@ -77,13 +91,13 @@
             {% if chat_answer %}
             <div class="answer">
                 <h3>Відповідь</h3>
-                <div class="answer-body">{{ chat_answer.answer }}</div>
+                <div class="answer-body">{{ chat_answer_html | safe }}</div>
                 <h3>Знайдені джерела</h3>
                 <ul class="sources">
                     {% for source in chat_answer.sources %}
                     <li>
                         <div class="source-head">
-                            <strong>{{ source.metadata.source_name }}</strong>
+                            <a class="source-file-link" href="/documents/preview?path={{ source.metadata.source_path|urlencode }}{% if source.metadata.page %}&page={{ source.metadata.page }}{% endif %}{% if source.metadata.sheet_name %}&sheet_name={{ source.metadata.sheet_name|urlencode }}{% endif %}{% if source.metadata.row_number %}&row_number={{ source.metadata.row_number }}{% endif %}" target="_blank" rel="noopener">{{ source.metadata.source_name }}</a>
                             <span class="muted">distance: {{ '%.4f'|format(source.distance) }}</span>
                         </div>
                         <div class="source-meta">
@@ -91,6 +105,7 @@
                             {% if source.metadata.sheet_name %}Лист {{ source.metadata.sheet_name }}{% endif %}
                             {% if source.metadata.row_number %}Рядок {{ source.metadata.row_number }}{% endif %}
                         </div>
+                        <p><a class="source-open-link" href="/documents/preview?path={{ source.metadata.source_path|urlencode }}{% if source.metadata.page %}&page={{ source.metadata.page }}{% endif %}{% if source.metadata.sheet_name %}&sheet_name={{ source.metadata.sheet_name|urlencode }}{% endif %}{% if source.metadata.row_number %}&row_number={{ source.metadata.row_number }}{% endif %}" target="_blank" rel="noopener">Відкрити джерело</a></p>
                         <p>{{ source.text }}</p>
                     </li>
                     {% endfor %}

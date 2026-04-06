@@ -41,6 +41,18 @@ class IndexingReport:
 
 
 @dataclass(slots=True)
+class IndexingStatus:
+    running: bool = False
+    started_at: str | None = None
+    finished_at: str | None = None
+    total_files: int = 0
+    processed_files: int = 0
+    current_file: str | None = None
+    message: str | None = None
+    report: IndexingReport = field(default_factory=IndexingReport)
+
+
+@dataclass(slots=True)
 class ChatAnswer:
     question: str
     answer: str

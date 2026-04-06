@@ -87,6 +87,15 @@ class OllamaServiceTests(unittest.TestCase):
             "Ціна 7800 грн/т [SOURCE 1].\nДжерела: [SOURCE 1]",
         )
 
+    def test_clip_context_text_trims_long_chunks(self) -> None:
+        settings = Settings(max_context_chars_per_hit=20)
+        service = _ReadyOllamaService(settings=settings, models=set())
+
+        clipped = service._clip_context_text("один два три чотири п'ять шість сім")
+
+        self.assertTrue(clipped.endswith(" ..."))
+        self.assertLessEqual(len(clipped), 24)
+
 
 if __name__ == "__main__":
     unittest.main()

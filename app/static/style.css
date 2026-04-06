@@ -195,6 +195,20 @@ button.secondary:hover {
     margin-bottom: 18px;
 }
 
+.source-inline-link,
+.source-file-link,
+.source-open-link {
+    color: var(--accent-strong);
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.source-inline-link:hover,
+.source-file-link:hover,
+.source-open-link:hover {
+    text-decoration: underline;
+}
+
 .sources {
     margin: 0;
     padding-left: 18px;
@@ -214,6 +228,19 @@ button.secondary:hover {
     color: var(--muted);
     font-size: 0.9rem;
     margin: 4px 0 6px;
+}
+
+.source-open-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(46, 111, 64, 0.09);
+}
+
+.secondary-link {
+    background: rgba(128, 109, 56, 0.12);
 }
 
 .stats {
@@ -258,6 +285,77 @@ thead th {
     border-top: 0;
 }
 
+.preview-page {
+    max-width: 1400px;
+}
+
+.preview-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+.preview-title {
+    margin-bottom: 8px;
+    font-size: clamp(1.8rem, 3vw, 2.8rem);
+}
+
+.preview-meta {
+    margin-bottom: 10px;
+    word-break: break-all;
+}
+
+.preview-note {
+    margin-bottom: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.preview-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.preview-frame-wrap {
+    min-height: 72vh;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.preview-frame {
+    width: 100%;
+    min-height: 72vh;
+    border: 0;
+    background: white;
+}
+
+.preview-table-wrap {
+    max-height: 78vh;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.74);
+}
+
+.preview-table {
+    min-width: 920px;
+}
+
+.row-number-cell {
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.target-row {
+    background: rgba(46, 111, 64, 0.16);
+}
+
 @media (max-width: 960px) {
     .hero,
     .grid {
@@ -271,12 +369,17 @@ thead th {
     }
 
     .panel-head,
-    .source-head {
+    .source-head,
+    .preview-head {
         flex-direction: column;
         align-items: flex-start;
     }
 
     .stats {
         grid-template-columns: 1fr;
+    }
+
+    .preview-actions {
+        justify-content: flex-start;
     }
 }

@@ -4,7 +4,7 @@ import hashlib
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import chromadb
 
@@ -34,17 +34,49 @@ class SearchIndex:
         self._get_collection("doc_chunks")
         self._get_collection("excel_rows")
 
-    def index_documents(self, directory: Path | None = None) -> IndexingReport:
+    def index_documents(
+        self,
+        directory: Path | None = None,
+        progress_callback: Callable[[dict[str, object]], None] | None = None,
+    ) -> IndexingReport:
         report = IndexingReport()
         target_dir = directory or self.settings.documents_dir
-        current_paths: set[Path] = set()
+        candidate_paths = [
+            path
+            for path in sorted(target_dir.rglob("*"))
+            if path.is_file() and self.parser.supports(path)
+        ]
+        current_paths = set(candidate_paths)
+        total_files = len(candidate_paths)
 
-        for path in sorted(target_dir.rglob("*")):
-            if not path.is_file():
-                continue
-            if not self.parser.supports(path):
-                continue
-            current_paths.add(path)
+        self._notify_progress(
+            progress_callback,
+            total_files=total_files,
+            processed_files=0,
+            current_file=None,
+            report=report,
+        )
+
+        tracked_paths = {
+            Path(record.path)
+            for record in self.registry.list_records(limit=None)
+        }
+        stale_paths = sorted(path for path in tracked_paths if path not in current_paths)
+        for stale_path in stale_paths:
+            self._delete_existing_entries(stale_path)
+            self.registry.delete_record(stale_path)
+            report.removed += 1
+
+        processed_files = 0
+
+        for path in candidate_paths:
+            self._notify_progress(
+                progress_callback,
+                total_files=total_files,
+                processed_files=processed_files,
+                current_file=str(path),
+                report=report,
+            )
 
             sha256 = self._hash_file(path)
             modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
@@ -56,6 +88,14 @@ class SearchIndex:
                 embedding_model=self.settings.embedding_model,
             ):
                 report.skipped += 1
+                processed_files += 1
+                self._notify_progress(
+                    progress_callback,
+                    total_files=total_files,
+                    processed_files=processed_files,
+                    current_file=str(path),
+                    report=report,
+                )
                 continue
 
             try:
@@ -86,16 +126,14 @@ class SearchIndex:
                     schema_version=self.settings.index_schema_version,
                     embedding_model=self.settings.embedding_model,
                 )
-
-        tracked_paths = {
-            Path(record.path)
-            for record in self.registry.list_records(limit=None)
-        }
-        stale_paths = sorted(path for path in tracked_paths if path not in current_paths)
-        for stale_path in stale_paths:
-            self._delete_existing_entries(stale_path)
-            self.registry.delete_record(stale_path)
-            report.removed += 1
+            processed_files += 1
+            self._notify_progress(
+                progress_callback,
+                total_files=total_files,
+                processed_files=processed_files,
+                current_file=str(path),
+                report=report,
+            )
 
         return report
 
@@ -218,3 +256,29 @@ class SearchIndex:
             for block in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(block)
         return digest.hexdigest()
+
+    def _notify_progress(
+        self,
+        progress_callback: Callable[[dict[str, object]], None] | None,
+        total_files: int,
+        processed_files: int,
+        current_file: str | None,
+        report: IndexingReport,
+    ) -> None:
+        if progress_callback is None:
+            return
+
+        progress_callback(
+            {
+                "total_files": total_files,
+                "processed_files": processed_files,
+                "current_file": current_file,
+                "report": IndexingReport(
+                    indexed=report.indexed,
+                    skipped=report.skipped,
+                    removed=report.removed,
+                    failed=report.failed,
+                    errors=list(report.errors),
+                ),
+            }
+        )
