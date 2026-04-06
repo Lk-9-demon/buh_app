@@ -44,17 +44,26 @@ class FileRegistry:
             return None
         return FileRecord(**dict(row))
 
-    def list_records(self, limit: int = 100) -> list[FileRecord]:
+    def list_records(self, limit: int | None = 100) -> list[FileRecord]:
+        query = """
+            SELECT * FROM indexed_files
+            ORDER BY COALESCE(indexed_at, modified_at) DESC, path ASC
+        """
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            query += "\nLIMIT ?"
+            params = (limit,)
+
         with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT * FROM indexed_files
-                ORDER BY COALESCE(indexed_at, modified_at) DESC, path ASC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            rows = connection.execute(query, params).fetchall()
         return [FileRecord(**dict(row)) for row in rows]
+
+    def delete_record(self, path: Path) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM indexed_files WHERE path = ?",
+                (str(path),),
+            )
 
     def get_stats(self) -> dict[str, int]:
         with self._connect() as connection:

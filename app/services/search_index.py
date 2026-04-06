@@ -10,7 +10,7 @@ import chromadb
 
 from app.config import Settings
 from app.services.grounding import filter_grounded_hits
-from app.services.openai_service import OpenAIService
+from app.services.ollama_service import OllamaService
 from app.services.parsers import DocumentParser
 from app.services.registry import FileRegistry
 from app.types import IndexingReport, ParsedChunk, SearchHit
@@ -22,12 +22,12 @@ class SearchIndex:
         settings: Settings,
         parser: DocumentParser,
         registry: FileRegistry,
-        openai_service: OpenAIService,
+        ollama_service: OllamaService,
     ) -> None:
         self.settings = settings
         self.parser = parser
         self.registry = registry
-        self.openai_service = openai_service
+        self.ollama_service = ollama_service
         self.client = chromadb.PersistentClient(path=str(self.settings.chroma_dir))
 
     def ensure_collections(self) -> None:
@@ -37,12 +37,14 @@ class SearchIndex:
     def index_documents(self, directory: Path | None = None) -> IndexingReport:
         report = IndexingReport()
         target_dir = directory or self.settings.documents_dir
+        current_paths: set[Path] = set()
 
         for path in sorted(target_dir.rglob("*")):
             if not path.is_file():
                 continue
             if not self.parser.supports(path):
                 continue
+            current_paths.add(path)
 
             sha256 = self._hash_file(path)
             modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
@@ -85,6 +87,16 @@ class SearchIndex:
                     embedding_model=self.settings.embedding_model,
                 )
 
+        tracked_paths = {
+            Path(record.path)
+            for record in self.registry.list_records(limit=None)
+        }
+        stale_paths = sorted(path for path in tracked_paths if path not in current_paths)
+        for stale_path in stale_paths:
+            self._delete_existing_entries(stale_path)
+            self.registry.delete_record(stale_path)
+            report.removed += 1
+
         return report
 
     def search(self, question: str) -> list[SearchHit]:
@@ -100,7 +112,7 @@ class SearchIndex:
         if not collections:
             return []
 
-        query_embedding = self.openai_service.embed_texts([question])[0]
+        query_embedding = self.ollama_service.embed_texts([question])[0]
         results: list[SearchHit] = []
 
         for prefix, collection in collections:
@@ -135,14 +147,14 @@ class SearchIndex:
         self._delete_existing_entries(path)
 
         texts = [chunk.text for chunk in chunks]
-        embeddings = self.openai_service.embed_texts(texts)
+        embeddings = self.ollama_service.embed_texts(texts)
         grouped_payload: dict[str, dict[str, list[object]]] = {
             "doc_chunks": {"ids": [], "documents": [], "embeddings": [], "metadatas": []},
             "excel_rows": {"ids": [], "documents": [], "embeddings": [], "metadatas": []},
         }
 
         for index, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            prefix = "excel_rows" if path.suffix.lower() == ".xlsx" else "doc_chunks"
+            prefix = "excel_rows" if path.suffix.lower() in {".xls", ".xlsx"} else "doc_chunks"
             metadata = self._build_metadata(path, sha256, index, chunk.metadata)
             chunk_id = f"{sha256}:{index}"
 

@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
-from app.dependencies import get_chat_service, get_file_registry, get_search_index
+from app.dependencies import get_chat_service, get_file_registry, get_ollama_service, get_search_index
 from app.types import ChatAnswer
 
 
@@ -80,13 +80,14 @@ async def upload_documents(files: list[UploadFile] | None = File(default=None)):
 
 @app.post("/documents/reindex")
 async def reindex_documents():
-    if not settings.openai_api_key:
-        return _redirect_with_message("Додай OPENAI_API_KEY у .env перед індексацією документів.")
+    runtime_status = get_ollama_service().get_status()
+    if not runtime_status["ready"]:
+        return _redirect_with_message(str(runtime_status["message"]))
 
     report = await run_in_threadpool(get_search_index().index_documents)
     message = (
         f"Індексація завершена. Нових/оновлених: {report.indexed}, "
-        f"пропущено: {report.skipped}, помилок: {report.failed}."
+        f"пропущено: {report.skipped}, видалено з індексу: {report.removed}, помилок: {report.failed}."
     )
     if report.errors:
         message += " Деталі нижче у таблиці файлів."
@@ -95,12 +96,13 @@ async def reindex_documents():
 
 @app.post("/chat", response_class=HTMLResponse)
 async def chat(request: Request, question: str = Form(...)):
-    if not settings.openai_api_key:
+    runtime_status = get_ollama_service().get_status()
+    if not runtime_status["ready"]:
         return _render_home(
             request=request,
             chat_answer=ChatAnswer(
                 question=question,
-                answer="Потрібно додати OPENAI_API_KEY у .env, щоб індексація і чат могли працювати.",
+                answer=str(runtime_status["message"]),
                 sources=[],
             ),
         )
@@ -118,7 +120,12 @@ async def chat(request: Request, question: str = Form(...)):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "app": settings.app_name}
+    runtime_status = get_ollama_service().get_status()
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "runtime_ready": bool(runtime_status["ready"]),
+    }
 
 
 def _render_home(
@@ -127,6 +134,7 @@ def _render_home(
     chat_answer: ChatAnswer | None = None,
 ):
     registry = get_file_registry()
+    runtime_status = get_ollama_service().get_status()
     records = registry.list_records(limit=200)
     stats = registry.get_stats()
 
@@ -137,7 +145,8 @@ def _render_home(
             "app_name": settings.app_name,
             "message": message,
             "settings": settings,
-            "openai_ready": bool(settings.openai_api_key),
+            "runtime_ready": bool(runtime_status["ready"]),
+            "runtime_message": runtime_status["message"],
             "records": records,
             "stats": stats,
             "chat_answer": chat_answer,

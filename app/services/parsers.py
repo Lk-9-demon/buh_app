@@ -9,6 +9,11 @@ from docx import Document
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
+try:
+    import xlrd
+except ImportError:  # pragma: no cover - optional dependency for legacy Excel files
+    xlrd = None
+
 from app.config import Settings
 from app.types import ParsedChunk
 
@@ -24,6 +29,8 @@ class DocumentParser:
         suffix = path.suffix.lower()
         if suffix == ".pdf":
             return self._parse_pdf(path)
+        if suffix == ".xls":
+            return self._parse_xls(path)
         if suffix == ".xlsx":
             return self._parse_xlsx(path)
         if suffix == ".docx":
@@ -99,34 +106,41 @@ class DocumentParser:
             headers: list[str] | None = None
             for row_number, row in enumerate(sheet.iter_rows(values_only=True), start=1):
                 values = [self._format_cell(value) for value in row]
-                if not any(values):
-                    continue
-
-                if headers is None and self._looks_like_header(values):
-                    headers = [value if value else f"Column {index + 1}" for index, value in enumerate(values)]
-                    continue
-
-                labels = headers or [f"Column {index + 1}" for index in range(len(values))]
-                parts = []
-                for index, value in enumerate(values):
-                    if not value:
-                        continue
-                    label = labels[index] if index < len(labels) else f"Column {index + 1}"
-                    parts.append(f"{label}: {value}")
-
-                if not parts:
-                    continue
-
-                chunks.append(
-                    ParsedChunk(
-                        text=" | ".join(parts),
-                        metadata={
-                            "sheet_name": sheet.title,
-                            "row_number": row_number,
-                            "chunk_index": 0,
-                        },
-                    )
+                headers, chunk = self._tabular_row_to_chunk(
+                    values=values,
+                    headers=headers,
+                    sheet_name=sheet.title,
+                    row_number=row_number,
                 )
+                if chunk is not None:
+                    chunks.append(chunk)
+
+        return chunks
+
+    def _parse_xls(self, path: Path) -> list[ParsedChunk]:
+        if xlrd is None:
+            raise ValueError("Для читання файлів .xls потрібно встановити пакет xlrd.")
+
+        workbook = xlrd.open_workbook(filename=str(path), on_demand=True)
+        chunks: list[ParsedChunk] = []
+        try:
+            for sheet in workbook.sheets():
+                headers: list[str] | None = None
+                for row_number in range(1, sheet.nrows + 1):
+                    values = [
+                        self._format_xls_cell(workbook, cell)
+                        for cell in sheet.row(row_number - 1)
+                    ]
+                    headers, chunk = self._tabular_row_to_chunk(
+                        values=values,
+                        headers=headers,
+                        sheet_name=sheet.name,
+                        row_number=row_number,
+                    )
+                    if chunk is not None:
+                        chunks.append(chunk)
+        finally:
+            workbook.release_resources()
 
         return chunks
 
@@ -139,31 +153,14 @@ class DocumentParser:
         headers: list[str] | None = None
         for row_number, row in enumerate(rows, start=1):
             values = [self._clean_text(value) for value in row]
-            if not any(values):
-                continue
-
-            if headers is None and self._looks_like_header(values):
-                headers = [value if value else f"Column {index + 1}" for index, value in enumerate(values)]
-                continue
-
-            labels = headers or [f"Column {index + 1}" for index in range(len(values))]
-            parts = []
-            for index, value in enumerate(values):
-                if not value:
-                    continue
-                label = labels[index] if index < len(labels) else f"Column {index + 1}"
-                parts.append(f"{label}: {value}")
-            if parts:
-                chunks.append(
-                    ParsedChunk(
-                        text=" | ".join(parts),
-                        metadata={
-                            "sheet_name": "CSV",
-                            "row_number": row_number,
-                            "chunk_index": 0,
-                        },
-                    )
-                )
+            headers, chunk = self._tabular_row_to_chunk(
+                values=values,
+                headers=headers,
+                sheet_name="CSV",
+                row_number=row_number,
+            )
+            if chunk is not None:
+                chunks.append(chunk)
         return chunks
 
     def _parse_txt(self, path: Path) -> list[ParsedChunk]:
@@ -219,6 +216,40 @@ class DocumentParser:
         numeric_count = sum(1 for value in non_empty if self._is_numeric(value))
         return numeric_count / len(non_empty) < 0.4
 
+    def _tabular_row_to_chunk(
+        self,
+        values: list[str],
+        headers: list[str] | None,
+        sheet_name: str,
+        row_number: int,
+    ) -> tuple[list[str] | None, ParsedChunk | None]:
+        if not any(values):
+            return headers, None
+
+        if headers is None and self._looks_like_header(values):
+            new_headers = [value if value else f"Column {index + 1}" for index, value in enumerate(values)]
+            return new_headers, None
+
+        labels = headers or [f"Column {index + 1}" for index in range(len(values))]
+        parts = []
+        for index, value in enumerate(values):
+            if not value:
+                continue
+            label = labels[index] if index < len(labels) else f"Column {index + 1}"
+            parts.append(f"{label}: {value}")
+
+        if not parts:
+            return headers, None
+
+        return headers, ParsedChunk(
+            text=" | ".join(parts),
+            metadata={
+                "sheet_name": sheet_name,
+                "row_number": row_number,
+                "chunk_index": 0,
+            },
+        )
+
     def _is_numeric(self, value: str) -> bool:
         normalized = value.replace(" ", "").replace(",", ".")
         try:
@@ -230,4 +261,27 @@ class DocumentParser:
     def _format_cell(self, value: object) -> str:
         if value is None:
             return ""
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
         return self._clean_text(str(value))
+
+    def _format_xls_cell(self, workbook: object, cell: object) -> str:
+        if xlrd is None:
+            return ""
+
+        if cell.ctype in {xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK}:
+            return ""
+        if cell.ctype == xlrd.XL_CELL_DATE:
+            try:
+                date_value = xlrd.xldate_as_datetime(cell.value, workbook.datemode)
+                return self._clean_text(date_value.isoformat(sep=" ", timespec="seconds"))
+            except (OverflowError, ValueError):
+                return self._clean_text(str(cell.value))
+        if cell.ctype == xlrd.XL_CELL_BOOLEAN:
+            return "TRUE" if bool(cell.value) else "FALSE"
+        if cell.ctype == xlrd.XL_CELL_NUMBER:
+            number = float(cell.value)
+            if number.is_integer():
+                return str(int(number))
+            return self._clean_text(str(number))
+        return self._clean_text(str(cell.value))

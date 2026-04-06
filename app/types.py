@@ -35,6 +35,7 @@ class FileRecord:
 class IndexingReport:
     indexed: int = 0
     skipped: int = 0
+    removed: int = 0
     failed: int = 0
     errors: list[str] = field(default_factory=list)
 

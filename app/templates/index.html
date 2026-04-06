@@ -14,12 +14,14 @@
             <h1>{{ app_name }}</h1>
             <p class="lede">
                 Веб-застосунок для пошуку по документах компанії. Файли лежать локально,
-                індексація йде в ChromaDB, а відповіді формуються через OpenAI.
+                індексація йде в ChromaDB, а відповіді формуються через локальну Ollama.
             </p>
         </div>
         <div class="hero-card">
             <p><strong>Папка документів</strong></p>
             <p class="mono">{{ settings.documents_dir }}</p>
+            <p><strong>Ollama URL</strong></p>
+            <p class="mono">{{ settings.ollama_base_url }}</p>
             <p><strong>Embedding model</strong></p>
             <p class="mono">{{ settings.embedding_model }}</p>
             <p><strong>Answer model</strong></p>
@@ -33,9 +35,9 @@
     </section>
     {% endif %}
 
-    {% if not openai_ready %}
+    {% if not runtime_ready %}
     <section class="notice warning">
-        OPENAI_API_KEY ще не заданий. Інтерфейс уже працює, але індексація та відповіді почнуть працювати тільки після додавання ключа в <span class="mono">.env</span>.
+        {{ runtime_message or "Локальна Ollama ще не готова. Перевір, що сервер запущений і потрібні моделі завантажені." }}
     </section>
     {% endif %}
 
@@ -43,7 +45,7 @@
         <article class="panel">
             <div class="panel-head">
                 <h2>1. Документи</h2>
-                <span class="badge">PDF / XLSX / DOCX / CSV / TXT</span>
+                <span class="badge">PDF / XLS / XLSX / DOCX / CSV / TXT</span>
             </div>
             <form action="/documents/upload" method="post" enctype="multipart/form-data" class="stack">
                 <label class="field">

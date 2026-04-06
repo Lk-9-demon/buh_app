@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from app.services.openai_service import OpenAIService
+from app.services.ollama_service import OllamaService
 from app.services.search_index import SearchIndex
 from app.types import ChatAnswer
 
 
 class ChatService:
-    def __init__(self, search_index: SearchIndex, openai_service: OpenAIService) -> None:
+    def __init__(self, search_index: SearchIndex, ollama_service: OllamaService) -> None:
         self.search_index = search_index
-        self.openai_service = openai_service
+        self.ollama_service = ollama_service
 
     def answer_question(self, question: str) -> ChatAnswer:
         normalized_question = question.strip()
@@ -20,5 +20,5 @@ class ChatService:
             )
 
         hits = self.search_index.search(normalized_question)
-        answer = self.openai_service.answer_question(normalized_question, hits)
+        answer = self.ollama_service.answer_question(normalized_question, hits)
         return ChatAnswer(question=normalized_question, answer=answer, sources=hits)

@@ -14,17 +14,17 @@ class Settings(BaseSettings):
     app_name: str = "Buh Chat"
     debug: bool = False
 
-    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    embedding_model: str = "text-embedding-3-small"
-    answer_model: str = "gpt-5.4-mini"
-    answer_temperature: float = 0.1
+    ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+    embedding_model: str = Field(default="qwen3-embedding:0.6b", alias="OLLAMA_EMBEDDING_MODEL")
+    answer_model: str = Field(default="qwen3:8b", alias="OLLAMA_CHAT_MODEL")
+    answer_temperature: float = Field(default=0.1, alias="OLLAMA_TEMPERATURE")
 
     documents_dir: Path = BASE_DIR / "data" / "documents"
     storage_dir: Path = BASE_DIR / "storage"
     chroma_dir: Path = BASE_DIR / "storage" / "chroma"
     state_db_path: Path = BASE_DIR / "storage" / "state.db"
 
-    allowed_extensions: tuple[str, ...] = (".pdf", ".xlsx", ".docx", ".csv", ".txt")
+    allowed_extensions: tuple[str, ...] = (".pdf", ".xls", ".xlsx", ".docx", ".csv", ".txt")
     max_chunk_chars: int = 1400
     chunk_overlap_chars: int = 160
     top_k_per_collection: int = 5
