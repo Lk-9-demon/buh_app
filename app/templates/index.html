@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<main class="page">
+    <section class="hero">
+        <div class="hero-copy">
+            <p class="eyebrow">MVP</p>
+            <h1>{{ app_name }}</h1>
+            <p class="lede">
+                Веб-застосунок для пошуку по документах компанії. Файли лежать локально,
+                індексація йде в ChromaDB, а відповіді формуються через OpenAI.
+            </p>
+        </div>
+        <div class="hero-card">
+            <p><strong>Папка документів</strong></p>
+            <p class="mono">{{ settings.documents_dir }}</p>
+            <p><strong>Embedding model</strong></p>
+            <p class="mono">{{ settings.embedding_model }}</p>
+            <p><strong>Answer model</strong></p>
+            <p class="mono">{{ settings.answer_model }}</p>
+        </div>
+    </section>
+
+    {% if message %}
+    <section class="notice">
+        {{ message }}
+    </section>
+    {% endif %}
+
+    {% if not openai_ready %}
+    <section class="notice warning">
+        OPENAI_API_KEY ще не заданий. Інтерфейс уже працює, але індексація та відповіді почнуть працювати тільки після додавання ключа в <span class="mono">.env</span>.
+    </section>
+    {% endif %}
+
+    <section class="grid">
+        <article class="panel">
+            <div class="panel-head">
+                <h2>1. Документи</h2>
+                <span class="badge">PDF / XLSX / DOCX / CSV / TXT</span>
+            </div>
+            <form action="/documents/upload" method="post" enctype="multipart/form-data" class="stack">
+                <label class="field">
+                    <span>Додати файли</span>
+                    <input type="file" name="files" multiple>
+                </label>
+                <button type="submit">Завантажити</button>
+            </form>
+            <form action="/documents/reindex" method="post" class="stack reindex-form">
+                <p class="muted">
+                    Після завантаження або ручного додавання файлів у папку натисни переіндексацію.
+                </p>
+                <button type="submit" class="secondary">Переіндексувати документи</button>
+            </form>
+        </article>
+
+        <article class="panel">
+            <div class="panel-head">
+                <h2>2. Поставити питання</h2>
+                <span class="badge">RAG search</span>
+            </div>
+            <form action="/chat" method="post" class="stack">
+                <label class="field">
+                    <span>Питання</span>
+                    <textarea name="question" rows="5" placeholder="Наприклад: Яка ціна пшениці у березні?">{% if chat_answer %}{{ chat_answer.question }}{% endif %}</textarea>
+                </label>
+                <button type="submit">Запитати</button>
+            </form>
+            {% if chat_answer %}
+            <div class="answer">
+                <h3>Відповідь</h3>
+                <div class="answer-body">{{ chat_answer.answer }}</div>
+                <h3>Знайдені джерела</h3>
+                <ul class="sources">
+                    {% for source in chat_answer.sources %}
+                    <li>
+                        <div class="source-head">
+                            <strong>{{ source.metadata.source_name }}</strong>
+                            <span class="muted">distance: {{ '%.4f'|format(source.distance) }}</span>
+                        </div>
+                        <div class="source-meta">
+                            {% if source.metadata.page %}Сторінка {{ source.metadata.page }}{% endif %}
+                            {% if source.metadata.sheet_name %}Лист {{ source.metadata.sheet_name }}{% endif %}
+                            {% if source.metadata.row_number %}Рядок {{ source.metadata.row_number }}{% endif %}
+                        </div>
+                        <p>{{ source.text }}</p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </article>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <h2>3. Стан індексу</h2>
+            <span class="badge">{{ stats.total }} файлів у реєстрі</span>
+        </div>
+        <div class="stats">
+            <div class="stat-box">
+                <span class="muted">Індексовано</span>
+                <strong>{{ stats.indexed }}</strong>
+            </div>
+            <div class="stat-box">
+                <span class="muted">Помилки</span>
+                <strong>{{ stats.failed }}</strong>
+            </div>
+            <div class="stat-box">
+                <span class="muted">Очікують</span>
+                <strong>{{ stats.pending }}</strong>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Файл</th>
+                        <th>Статус</th>
+                        <th>Chunks</th>
+                        <th>Остання індексація</th>
+                        <th>Помилка</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for record in records %}
+                    <tr>
+                        <td>
+                            <div>{{ record.path }}</div>
+                            <div class="muted small">{{ record.embedding_model }} / {{ record.schema_version }}</div>
+                        </td>
+                        <td>{{ record.status }}</td>
+                        <td>{{ record.chunk_count }}</td>
+                        <td>{{ record.indexed_at or 'ще не індексовано' }}</td>
+                        <td>{{ record.last_error or '-' }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5">Ще немає жодного файла в реєстрі.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

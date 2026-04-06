@@ -1,0 +1,1 @@
+"""Buh Chat application package."""
